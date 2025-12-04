@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Изучение Китайских Иероглифов - HSK 1</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Настройка шрифта Inter */
+        body { font-family: 'Inter', sans-serif; }
+        /* Пользовательский стиль для холста рисования */
+        #drawing-canvas, #memory-drawing-canvas {
+            border: 2px solid theme('colors.indigo.400');
+            border-radius: 0.5rem;
+            background-color: theme('colors.white');
+            touch-action: none;
+            max-width: 100%;
+            height: auto;
+        }
+        /* Стили для кнопок навигации */
+        .nav-btn {
+            @apply p-3 rounded-xl transition duration-200 ease-in-out font-medium text-white shadow-lg;
+        }
+        .nav-btn:hover {
+            @apply opacity-90;
+        }
+        .btn-primary {
+            @apply bg-indigo-600 hover:bg-indigo-700;
+        }
+        .btn-secondary {
+            @apply bg-gray-500 hover:bg-gray-600;
+        }
+        .tab-button.active {
+            @apply border-indigo-500 text-indigo-600 font-semibold;
+        }
+        /* Стили для кнопок вариантов ответа */
+        .quiz-option {
+            @apply p-4 bg-white border border-blue-300 rounded-xl shadow hover:bg-blue-100 transition duration-150 text-xl font-medium text-gray-800;
+        }
+        /* Стили для кнопки аудио */
+        #play-audio-btn {
+            @apply inline-flex items-center justify-center p-2 rounded-full bg-indigo-200 text-indigo-700 hover:bg-indigo-300 transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8">
+
+    <div id="app" class="max-w-6xl mx-auto bg-white shadow-xl rounded-2xl overflow-hidden">
+        
+        <!-- Заголовок и Навигация по вкладкам -->
+        <header class="p-6 border-b border-gray-200 bg-gray-50">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-4">
+                <h1 class="text-3xl font-bold text-gray-900">
+                    Китайский HSK 1
+                </h1>
+                
+                <!-- Выбор урока -->
+                <div class="mt-4 md:mt-0 flex items-center space-x-2">
+                    <label for="lesson-select" class="text-gray-700 font-medium">Урок:</label>
+                    <select id="lesson-select" class="p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-white shadow-sm" onchange="selectLesson(this.value)">
+                        <!-- Опции будут добавлены через JS -->
+                    </select>
+                </div>
+            </div>
+
+            <p class="text-gray-600 mb-4 text-center md:text-left">
+                Прогресс: Иероглиф <span id="current-char-number" class="font-bold text-indigo-600">1</span> из <span id="total-chars-count">10</span> в этом уроке
+            </p>
+            
+            <!-- Вкладки (Learn/Test/Draw) -->
+            <div class="flex border-b overflow-x-auto">
+                <button class="tab-button active flex-1 py-3 px-4 text-center border-b-2 border-transparent transition duration-150 ease-in-out whitespace-nowrap" onclick="showView('learn')">
+                    Урок и Практика
+                </button>
+                <button class="tab-button flex-1 py-3 px-4 text-center border-b-2 border-transparent transition duration-150 ease-in-out whitespace-nowrap" onclick="showView('test')">
+                    Тест (Выбор)
+                </button>
+                <button class="tab-button flex-1 py-3 px-4 text-center border-b-2 border-transparent transition duration-150 ease-in-out whitespace-nowrap" onclick="showView('draw-test')">
+                    Написать по памяти
+                </button>
+            </div>
+        </header>
+
+        <!-- Основной Контент -->
+        <main class="p-6 md:p-8">
+
+            <!-- Сообщения системы -->
+            <div id="status-message" class="hidden p-4 mb-4 text-sm text-center font-medium rounded-lg bg-red-100 text-red-800" role="alert"></div>
+            <div id="firestore-status" class="text-xs text-right text-gray-500 mb-4">Подключение к БД...</div>
+
+
+            <!-- 1. Вкладка "Урок и Практика" -->
+            <div id="learn-view" class="view-content space-y-8">
+                
+                <!-- Убран дублирующийся заголовок с иероглифом -->
+
+                <div class="grid md:grid-cols-2 gap-8">
+                    
+                    <!-- Секция: Иероглиф и Анимация -->
+                    <div class="space-y-4 p-6 bg-indigo-50 rounded-xl">
+                        <h3 class="text-xl font-medium text-indigo-700">Анимация порядка черт</h3>
+                        <div id="character-target" class="w-full mx-auto" style="height: 250px;"></div>
+                        <p class="text-center text-sm text-gray-700">Нажмите для повторной анимации</p>
+                        <div class="text-center space-y-2">
+                            <p class="text-lg font-bold flex items-center justify-center gap-2">
+                                Пиньинь: 
+                                <span id="pinyin-display" class="text-indigo-600">dà</span>
+                                <button id="play-audio-btn" onclick="playCurrentPinyin()" title="Прослушать пиньинь">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-volume-2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                                </button>
+                            </p>
+                            <p class="text-lg font-bold">Значение: <span id="meaning-display" class="text-indigo-600">большой</span></p>
+                            
+                            <!-- Отображение контекста слова -->
+                            <div id="context-display-area" class="mt-4 pt-4 border-t border-indigo-200 hidden">
+                                <p class="text-sm text-gray-500 uppercase tracking-wide font-semibold">Используется в слове:</p>
+                                <p class="text-2xl font-bold text-gray-800 mt-1" id="context-word"></p>
+                                <p class="text-md text-gray-600 italic" id="context-meaning"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Секция: Рисование -->
+                    <div class="space-y-4 p-6 bg-green-50 rounded-xl">
+                        <h3 class="text-xl font-medium text-green-700">Ваша практика рисования</h3>
+                        <div id="drawing-canvas" class="w-full mx-auto" style="height: 250px;"></div>
+                        <div class="flex justify-around space-x-4 pt-2">
+                            <button class="nav-btn bg-red-500 hover:bg-red-600 flex-1" onclick="clearDrawing()">Очистить</button>
+                            <button class="nav-btn bg-green-500 hover:bg-green-600 flex-1" onclick="checkDrawing()">Проверить</button>
+                        </div>
+                        <div id="drawing-feedback" class="text-center text-sm font-medium pt-2">Начните рисовать. Система проверит каждую черту.</div>
+                    </div>
+                </div>
+
+                <!-- Навигация по иероглифам -->
+                <div class="flex justify-between pt-8">
+                    <button id="prev-char-btn" class="nav-btn btn-secondary" onclick="changeChar(-1)">
+                        &larr; Назад
+                    </button>
+                    <button id="next-char-btn" class="nav-btn btn-primary" onclick="changeChar(1)">
+                        Вперед &rarr;
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. Вкладка "Тест (Выбор)" -->
+            <div id="test-view" class="view-content hidden space-y-8 p-6 bg-blue-50 rounded-xl">
+                <h2 class="text-2xl font-semibold text-blue-800">Проверка знаний (Выбор)</h2>
+                <div id="quiz-question" class="text-center text-xl font-medium text-gray-700 mb-6 p-4 border-b border-blue-200">
+                    Начните тест!
+                </div>
+                <div id="quiz-options" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+                <div class="text-center pt-6">
+                    <button id="start-quiz-btn" class="nav-btn bg-blue-600 hover:bg-blue-700" onclick="startQuiz()">Начать Тест по Уроку</button>
+                    <div id="quiz-feedback" class="mt-4 text-lg font-bold"></div>
+                </div>
+            </div>
+            
+            <!-- 3. Вкладка "Написать по памяти" -->
+            <div id="draw-test-view" class="view-content hidden space-y-8 p-6 bg-purple-50 rounded-xl max-w-lg mx-auto">
+                <h2 class="text-2xl font-semibold text-purple-800 text-center">Написать по памяти</h2>
+                <div class="text-center p-4 bg-white rounded-lg shadow-md border-purple-200 border">
+                    <p class="text-xl text-gray-600">Нарисуйте иероглиф:</p>
+                    <p id="memory-prompt-pinyin" class="text-3xl font-bold text-purple-600 mt-2">-</p>
+                    <p id="memory-prompt-meaning" class="text-2xl text-purple-700 mt-1">-</p>
+                </div>
+
+                <div class="flex justify-center">
+                    <div id="memory-drawing-canvas" style="width: 300px; height: 300px;"></div>
+                </div>
+                
+                <div class="text-center pt-4">
+                    <div id="memory-test-feedback" class="mt-2 text-lg font-bold"></div>
+                    <div class="flex justify-center space-x-4 mt-4">
+                         <button class="nav-btn bg-red-500 hover:bg-red-600" onclick="clearMemoryDrawing()">Очистить</button>
+                         <button id="next-memory-btn" class="nav-btn bg-purple-600 hover:bg-purple-700" onclick="nextMemoryQuestion()">
+                            Начать тест
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Hanzi Writer CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.2/dist/hanzi-writer.min.js"></script>
+
+    <!-- Основная логика -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        setLogLevel('Debug');
+
+        // Глобальные переменные
+        let writer; 
+        let drawingWriter; 
+        let drawingWriterMemory; 
+        let currentLessonIndex = 0; // Индекс урока в массиве LESSONS
+        let currentCharIndex = 0;   // Индекс иероглифа внутри урока
+        let currentUserId = 'loading'; 
+        let audioIsPlaying = false;
+        let app, db, auth;
+
+        // =========================================================
+        // НОВАЯ СТРУКТУРА ДАННЫХ С КОНТЕКСТОМ
+        // =========================================================
+        const LESSONS_DATA = [
+            {
+                title: "Урок 1: Цифры",
+                vocab: [
+                    { char: '一', pinyin: 'yī', meaning: 'один' },
+                    { char: '二', pinyin: 'èr', meaning: 'два' },
+                    { char: '三', pinyin: 'sān', meaning: 'три' },
+                    { char: '四', pinyin: 'sì', meaning: 'четыре' },
+                    { char: '五', pinyin: 'wǔ', meaning: 'пять' },
+                    { char: '六', pinyin: 'liù', meaning: 'шесть' },
+                    { char: '七', pinyin: 'qī', meaning: 'семь' },
+                    { char: '八', pinyin: 'bā', meaning: 'восемь' },
+                    { char: '九', pinyin: 'jiǔ', meaning: 'девять' },
+                    { char: '十', pinyin: 'shí', meaning: 'десять' }
+                ]
+            },
+            {
+                title: "Урок 2: Приветствия и местоимения",
+                vocab: [
+                    { char: '你', pinyin: 'nǐ', meaning: 'ты', context: '你好', contextMeaning: 'Привет (Ты + Хорошо)' },
+                    { char: '好', pinyin: 'hǎo', meaning: 'хорошо', context: '你好', contextMeaning: 'Привет' },
+                    { char: '我', pinyin: 'wǒ', meaning: 'я', context: '我们', contextMeaning: 'Мы' },
+                    { char: '她', pinyin: 'tā', meaning: 'она' },
+                    { char: '他', pinyin: 'tā', meaning: 'он' },
+                    { char: '吗', pinyin: 'ma', meaning: '?', context: '你好吗', contextMeaning: 'Как дела?' },
+                    { char: '谢', pinyin: 'xiè', meaning: 'благодарить', context: '谢谢', contextMeaning: 'Спасибо' },
+                    { char: '再', pinyin: 'zài', meaning: 'снова', context: '再见', contextMeaning: 'До свидания (Снова + Видеть)' },
+                    { char: '见', pinyin: 'jiàn', meaning: 'видеть', context: '再见', contextMeaning: 'До свидания' },
+                    { char: '不', pinyin: 'bù', meaning: 'нет/не', context: '不客气', contextMeaning: 'Не за что' },
+                    { char: '客', pinyin: 'kè', meaning: 'гость', context: '不客气', contextMeaning: 'Не за что' },
+                    { char: '气', pinyin: 'qì', meaning: 'дух/воздух', context: '不客气', contextMeaning: 'Не за что' },
+                    { char: '没', pinyin: 'méi', meaning: 'нет', context: '没关系', contextMeaning: 'Ничего страшного' },
+                    { char: '关', pinyin: 'guān', meaning: 'отношение', context: '没关系', contextMeaning: 'Ничего страшного' },
+                    { char: '系', pinyin: 'xì', meaning: 'связь', context: '没关系', contextMeaning: 'Ничего страшного' },
+                    { char: '对', pinyin: 'duì', meaning: 'правильно', context: '对不起', contextMeaning: 'Извините' },
+                    { char: '起', pinyin: 'qǐ', meaning: 'поднимать', context: '对不起', contextMeaning: 'Извините' },
+                    { char: '很', pinyin: 'hěn', meaning: 'очень', context: '很好', contextMeaning: 'Очень хорошо' }
+                ]
+            },
+            {
+                title: "Урок 3: Знакомство и Страны",
+                vocab: [
+                    { char: '叫', pinyin: 'jiào', meaning: 'звать', context: '我叫...', contextMeaning: 'Меня зовут...' },
+                    { char: '什', pinyin: 'shén', meaning: 'что', context: '什么', contextMeaning: 'Что / Какой' },
+                    { char: '么', pinyin: 'me', meaning: 'суффикс', context: '什么', contextMeaning: 'Что / Какой' },
+                    { char: '名', pinyin: 'míng', meaning: 'имя', context: '名字', contextMeaning: 'Имя' },
+                    { char: '字', pinyin: 'zì', meaning: 'знак', context: '名字', contextMeaning: 'Имя' },
+                    { char: '是', pinyin: 'shì', meaning: 'быть', context: '我是学生', contextMeaning: 'Я ученик' },
+                    { char: '老', pinyin: 'lǎo', meaning: 'старый', context: '老师', contextMeaning: 'Учитель (уваж.)' },
+                    { char: '师', pinyin: 'shī', meaning: 'мастер', context: '老师', contextMeaning: 'Учитель' },
+                    { char: '学', pinyin: 'xué', meaning: 'учить', context: '学生', contextMeaning: 'Студент/Ученик' },
+                    { char: '生', pinyin: 'shēng', meaning: 'рождаться', context: '学生', contextMeaning: 'Студент/Ученик' },
+                    { char: '中', pinyin: 'zhōng', meaning: 'середина', context: '中国', contextMeaning: 'Китай (Срединное государство)' },
+                    { char: '国', pinyin: 'guó', meaning: 'страна', context: '中国', contextMeaning: 'Китай' },
+                    { char: '人', pinyin: 'rén', meaning: 'человек', context: '中国人', contextMeaning: 'Китаец' },
+                    { char: '美', pinyin: 'měi', meaning: 'красивый', context: '美国', contextMeaning: 'США' },
+                    { char: '俄', pinyin: 'é', meaning: 'Россия', context: '俄罗斯', contextMeaning: 'Россия' },
+                    { char: '罗', pinyin: 'luó', meaning: 'сеть', context: '俄罗斯', contextMeaning: 'Россия' },
+                    { char: '斯', pinyin: 'sī', meaning: 'этот', context: '俄罗斯', contextMeaning: 'Россия' }
+                ]
+            },
+            {
+                title: "Урок 4: Языки и Друзья",
+                vocab: [
+                    { char: '谁', pinyin: 'shéi', meaning: 'кто', context: '他是谁?', contextMeaning: 'Кто он?' },
+                    { char: '的', pinyin: 'de', meaning: 'частица', context: '我的', contextMeaning: 'Мой' },
+                    { char: '汉', pinyin: 'hàn', meaning: 'Хань', context: '汉语', contextMeaning: 'Китайский язык' },
+                    { char: '语', pinyin: 'yǔ', meaning: 'язык', context: '汉语', contextMeaning: 'Китайский язык' },
+                    { char: '英', pinyin: 'yīng', meaning: 'герой', context: '英语', contextMeaning: 'Английский язык' },
+                    { char: '同', pinyin: 'tóng', meaning: 'тот же', context: '同学', contextMeaning: 'Одноклассник' },
+                    { char: '朋', pinyin: 'péng', meaning: 'друг', context: '朋友', contextMeaning: 'Друг' },
+                    { char: '友', pinyin: 'yǒu', meaning: 'дружба', context: '朋友', contextMeaning: 'Друг' },
+                    { char: '哪', pinyin: 'nǎ', meaning: 'какой', context: '哪个', contextMeaning: 'Который' }
+                ]
+            },
+            {
+                title: "Урок 5: Семья и Возраст",
+                vocab: [
+                    { char: '家', pinyin: 'jiā', meaning: 'семья/дом', context: '大家', contextMeaning: 'Все (досл. Большая семья)' },
+                    { char: '有', pinyin: 'yǒu', meaning: 'иметь', context: '我有...', contextMeaning: 'У меня есть...' },
+                    { char: '口', pinyin: 'kǒu', meaning: 'рот', context: '三口人', contextMeaning: 'Три члена семьи' },
+                    { char: '几', pinyin: 'jǐ', meaning: 'сколько', context: '几岁?', contextMeaning: 'Сколько лет?' },
+                    { char: '女', pinyin: 'nǚ', meaning: 'женщина', context: '女儿', contextMeaning: 'Дочь' },
+                    { char: '儿', pinyin: 'ér', meaning: 'ребенок', context: '女儿', contextMeaning: 'Дочь' },
+                    { char: '子', pinyin: 'zi', meaning: 'суффикс', context: '儿子', contextMeaning: 'Сын' },
+                    { char: '今', pinyin: 'jīn', meaning: 'сейчас', context: '今年', contextMeaning: 'Этот год' },
+                    { char: '年', pinyin: 'nián', meaning: 'год', context: '今年', contextMeaning: 'Этот год' },
+                    { char: '岁', pinyin: 'suì', meaning: 'лет', context: '几岁', contextMeaning: 'Сколько лет' },
+                    { char: '多', pinyin: 'duō', meaning: 'много', context: '多大', contextMeaning: 'Насколько большой (возраст)' },
+                    { char: '大', pinyin: 'dà', meaning: 'большой', context: '多大', contextMeaning: 'Насколько большой (возраст)' }
+                ]
+            },
+            {
+                title: "Урок 6: Еда и Действия",
+                vocab: [
+                    { char: '爸', pinyin: 'bà', meaning: 'папа', context: '爸爸', contextMeaning: 'Папа' },
+                    { char: '妈', pinyin: 'mā', meaning: 'мама', context: '妈妈', contextMeaning: 'Мама' },
+                    { char: '会', pinyin: 'huì', meaning: 'уметь', context: '我会...', contextMeaning: 'Я умею...' },
+                    { char: '说', pinyin: 'shuō', meaning: 'говорить', context: '说话', contextMeaning: 'Разговаривать' },
+                    { char: '菜', pinyin: 'cài', meaning: 'блюдо', context: '中国菜', contextMeaning: 'Китайская кухня' },
+                    { char: '吃', pinyin: 'chī', meaning: 'есть', context: '吃饭', contextMeaning: 'Кушать (еду)' },
+                    { char: '做', pinyin: 'zuò', meaning: 'делать', context: '做饭', contextMeaning: 'Готовить еду' },
+                    { char: '写', pinyin: 'xiě', meaning: 'писать', context: '写字', contextMeaning: 'Писать иероглифы' },
+                    { char: '读', pinyin: 'dú', meaning: 'читать', context: '读书', contextMeaning: 'Читать книгу / Учиться' },
+                    { char: '怎', pinyin: 'zěn', meaning: 'как', context: '怎么', contextMeaning: 'Как / Каким образом' }
+                ]
+            }
+        ];
+        
+        window.LESSONS_DATA = LESSONS_DATA; // Глобальный доступ
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const fsStatus = document.getElementById('firestore-status');
+        const statusMessage = document.getElementById('status-message');
+
+        // =========================================================
+        // FIREBASE
+        // =========================================================
+        const initializeFirebase = async () => {
+            if (!firebaseConfig) {
+                fsStatus.textContent = "Ошибка конфига";
+                return;
+            }
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                fsStatus.textContent = "Подключение...";
+                if (initialAuthToken) await signInWithCustomToken(auth, initialAuthToken);
+                else await signInAnonymously(auth);
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUserId = user.uid;
+                        fsStatus.textContent = `ID: ${currentUserId.substring(0, 5)}`;
+                        window.loadUserProgress(currentUserId);
+                    } else {
+                        currentUserId = crypto.randomUUID();
+                        fsStatus.textContent = "Аноним";
+                        window.initializeApp(currentUserId);
+                    }
+                });
+            } catch (error) {
+                fsStatus.textContent = "Ошибка сети";
+                console.error(error);
+            }
+        };
+
+        window.saveLessonProgress = async (lIndex, char, completed) => {
+            if (!db || !currentUserId || currentUserId.length < 10) return;
+            const docRef = doc(db, `artifacts/${appId}/users/${currentUserId}/progress_v2`, `L${lIndex}_${char}`);
+            try {
+                await setDoc(docRef, { char, completed, date: new Date().toISOString() }, { merge: true });
+                console.log(`Saved: ${char}`);
+            } catch (e) { console.error(e); }
+        };
+
+        window.loadUserProgress = (uid) => {
+            // В этой версии мы просто инициализируем приложение, 
+            // так как полная загрузка истории требует сложной логики
+            window.initializeApp(uid);
+        };
+
+        // =========================================================
+        // TTS
+        // =========================================================
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+            return bytes.buffer;
+        }
+
+        function pcmToWav(pcmData, sampleRate = 24000) {
+            const buffer = new ArrayBuffer(44 + pcmData.byteLength);
+            const view = new DataView(buffer);
+            const writeString = (v, o, s) => { for (let i=0; i<s.length; i++) v.setUint8(o+i, s.charCodeAt(i)); };
+            
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + pcmData.byteLength, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, pcmData.byteLength, true);
+            
+            const pcmBytes = new Uint8Array(pcmData);
+            for (let i=0; i<pcmData.byteLength; i++) view.setUint8(44+i, pcmBytes[i]);
+            return new Blob([view], { type: 'audio/wav' });
+        }
+
+        async function fetchWithExponentialBackoff(url, options) {
+            for (let i = 0; i < 3; i++) {
+                try {
+                    const res = await fetch(url, options);
+                    return res;
+                } catch (e) {
+                    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+                }
+            }
+            throw new Error('API Fail');
+        }
+
+        window.generateAndPlayAudio = async function(text) {
+            if (audioIsPlaying) return;
+            const btn = document.getElementById('play-audio-btn');
+            btn.classList.add('opacity-50');
+            
+            const apiKey = ""; // API Key Injected by Environment
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+            
+            try {
+                const res = await fetchWithExponentialBackoff(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: text }] }],
+                        generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } }, languageCode: "zh-CN" } }
+                    })
+                });
+                if (!res.ok) throw new Error('TTS Error');
+                const data = await res.json();
+                const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                
+                if (audioData) {
+                    const blob = pcmToWav(base64ToArrayBuffer(audioData));
+                    const audio = new Audio(URL.createObjectURL(blob));
+                    audioIsPlaying = true;
+                    audio.onended = () => { audioIsPlaying = false; btn.classList.remove('opacity-50'); };
+                    audio.play();
+                }
+            } catch (e) {
+                console.error(e);
+                btn.classList.remove('opacity-50');
+                audioIsPlaying = false;
+            }
+        };
+
+        window.playCurrentPinyin = () => {
+            const pinyin = document.getElementById('pinyin-display').textContent;
+            window.generateAndPlayAudio(pinyin);
+        };
+
+        // =========================================================
+        // ЛОГИКА ПРИЛОЖЕНИЯ
+        // =========================================================
+
+        window.initializeApp = (uid) => {
+            currentUserId = uid;
+            
+            // Заполнение селекта уроков
+            const select = document.getElementById('lesson-select');
+            select.innerHTML = '';
+            LESSONS_DATA.forEach((lesson, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                opt.textContent = lesson.title;
+                select.appendChild(opt);
+            });
+
+            loadLessonChar(0, 0); // Старт с 1 урока, 1 иероглифа
+
+            // Re-bind click for animation
+            document.getElementById('character-target').addEventListener('click', () => {
+                if (writer) writer.animateCharacter({ onComplete: () => writer.loopCharacterAnimation() });
+            });
+        };
+
+        // Функция загрузки конкретного иероглифа из конкретного урока
+        function loadLessonChar(lessonIdx, charIdx) {
+            currentLessonIndex = lessonIdx;
+            const lesson = LESSONS_DATA[lessonIdx];
+            
+            // Проверка границ
+            if (charIdx < 0) charIdx = 0;
+            if (charIdx >= lesson.vocab.length) charIdx = lesson.vocab.length - 1;
+            currentCharIndex = charIdx;
+
+            const charData = lesson.vocab[charIdx];
+
+            // UI обновления
+            document.getElementById('lesson-select').value = lessonIdx;
+            // УДАЛЕНО: document.getElementById('char-main-display').textContent = charData.char;
+            document.getElementById('pinyin-display').textContent = charData.pinyin;
+            document.getElementById('meaning-display').textContent = charData.meaning;
+            document.getElementById('current-char-number').textContent = charIdx + 1;
+            document.getElementById('total-chars-count').textContent = lesson.vocab.length;
+
+            // Отображение контекста
+            const contextArea = document.getElementById('context-display-area');
+            if (charData.context) {
+                contextArea.classList.remove('hidden');
+                document.getElementById('context-word').textContent = charData.context;
+                document.getElementById('context-meaning').textContent = charData.contextMeaning;
+            } else {
+                contextArea.classList.add('hidden');
+            }
+
+            // Навигация
+            document.getElementById('prev-char-btn').disabled = (charIdx === 0);
+            document.getElementById('prev-char-btn').classList.toggle('opacity-50', charIdx === 0);
+            
+            document.getElementById('next-char-btn').disabled = (charIdx === lesson.vocab.length - 1);
+            document.getElementById('next-char-btn').classList.toggle('opacity-50', charIdx === lesson.vocab.length - 1);
+
+            // Hanzi Writer: Анимация
+            document.getElementById('character-target').innerHTML = '';
+            writer = HanziWriter.create('character-target', charData.char, {
+                width: 250, height: 250, padding: 5, strokeColor: '#3B82F6',
+                showOutline: true, renderer: 'svg'
+            });
+            writer.animateCharacter({ onComplete: () => writer.loopCharacterAnimation() });
+
+            // Hanzi Writer: Рисование
+            document.getElementById('drawing-canvas').innerHTML = '';
+            document.getElementById('drawing-feedback').textContent = 'Начните рисовать...';
+            
+            drawingWriter = HanziWriter.create('drawing-canvas', charData.char, {
+                width: 250, height: 250, padding: 5, showOutline: true, 
+                drawingColor: '#10B981', drawingWidth: 5, showGrid: true, renderer: 'svg'
+            });
+            drawingWriter.quiz({ showHintAfterMisses: 2, allowMistakes: true });
+        }
+
+        // Переключение внутри урока
+        window.changeChar = (direction) => {
+            loadLessonChar(currentLessonIndex, currentCharIndex + direction);
+        };
+
+        // Выбор урока из селекта
+        window.selectLesson = (val) => {
+            loadLessonChar(parseInt(val), 0);
+            window.showView('learn');
+        };
+
+        window.clearDrawing = () => {
+            if (drawingWriter) {
+                drawingWriter.quiz({ showHintAfterMisses: 2, allowMistakes: true });
+                drawingWriter.quiz(); 
+                document.getElementById('drawing-feedback').textContent = 'Холст очищен.';
+            }
+        };
+
+        window.checkDrawing = () => {
+            document.getElementById('drawing-feedback').textContent = 'Отлично! Прогресс сохранен.';
+            document.getElementById('drawing-feedback').className = 'text-center text-lg font-bold text-green-600 pt-2';
+            // Сохраняем: Урок N, Иероглиф M
+            const char = LESSONS_DATA[currentLessonIndex].vocab[currentCharIndex].char;
+            window.saveLessonProgress(currentLessonIndex, char, true);
+        };
+
+        window.showView = (viewName) => {
+            document.querySelectorAll('.view-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`${viewName}-view`).classList.remove('hidden');
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            
+            // Активная вкладка
+            let idx = 1; 
+            if(viewName === 'test') idx = 2;
+            if(viewName === 'draw-test') idx = 3;
+            document.querySelector(`.tab-button:nth-child(${idx})`).classList.add('active');
+
+            if (viewName === 'test') resetQuiz();
+            if (viewName === 'draw-test') resetMemoryQuiz();
+        };
+
+        // =========================================================
+        // ЛОГИКА ТЕСТА (Выбор) - теперь только по текущему уроку
+        // =========================================================
+        const quizState = { active: false, score: 0, count: 0, total: 5, current: null, answer: null };
+
+        window.startQuiz = () => {
+            quizState.active = true;
+            quizState.score = 0;
+            quizState.count = 0;
+            document.getElementById('start-quiz-btn').textContent = 'След. вопрос';
+            document.getElementById('quiz-feedback').textContent = '';
+            document.getElementById('start-quiz-btn').disabled = false;
+            generateQuestion();
+        };
+
+        function resetQuiz() {
+            quizState.active = false;
+            document.getElementById('start-quiz-btn').textContent = 'Начать Тест';
+            document.getElementById('quiz-question').textContent = 'Начните тест!';
+            document.getElementById('quiz-options').innerHTML = '';
+            document.getElementById('quiz-feedback').textContent = '';
+        }
+
+        function generateQuestion() {
+            if (quizState.count >= quizState.total) {
+                document.getElementById('quiz-question').textContent = `Итог: ${quizState.score}/${quizState.total}`;
+                document.getElementById('start-quiz-btn').textContent = 'Заново';
+                quizState.active = false;
+                document.getElementById('quiz-options').innerHTML = '';
+                return;
+            }
+            quizState.count++;
+            
+            // Берем словарь ТЕКУЩЕГО урока
+            const lessonVocab = LESSONS_DATA[currentLessonIndex].vocab;
+            const correctData = lessonVocab[Math.floor(Math.random() * lessonVocab.length)];
+            
+            // Генерируем варианты (можно брать из других уроков для сложности, но пока из текущего или глобального)
+            // Для интереса возьмем неправильные ответы из ВСЕХ уроков
+            const allVocab = LESSONS_DATA.flatMap(l => l.vocab);
+            
+            const options = [correctData];
+            while (options.length < 4) {
+                const rnd = allVocab[Math.floor(Math.random() * allVocab.length)];
+                if (!options.find(o => o.char === rnd.char)) options.push(rnd);
+            }
+            options.sort(() => Math.random() - 0.5);
+
+            const isCharToPinyin = Math.random() < 0.5;
+            quizState.answer = isCharToPinyin ? correctData.pinyin : correctData.char;
+            
+            const qHtml = isCharToPinyin 
+                ? `Пиньинь для <span class="text-indigo-600 text-3xl font-bold">${correctData.char}</span>?`
+                : `Иероглиф для <span class="text-indigo-600 text-2xl font-bold">${correctData.pinyin}</span>?`;
+                
+            document.getElementById('quiz-question').innerHTML = qHtml;
+            
+            const optsEl = document.getElementById('quiz-options');
+            optsEl.innerHTML = '';
+            options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'quiz-option';
+                const txt = isCharToPinyin ? opt.pinyin : opt.char;
+                btn.textContent = txt;
+                btn.onclick = () => {
+                    if (!quizState.active) return;
+                    document.querySelectorAll('.quiz-option').forEach(b => b.disabled = true);
+                    if (txt === quizState.answer) {
+                        quizState.score++;
+                        document.getElementById('quiz-feedback').textContent = 'Верно!';
+                        document.getElementById('quiz-feedback').className = 'mt-4 text-green-600 font-bold';
+                        btn.classList.add('bg-green-200', 'border-green-500');
+                    } else {
+                        document.getElementById('quiz-feedback').textContent = `Ошибка. Ответ: ${quizState.answer}`;
+                        document.getElementById('quiz-feedback').className = 'mt-4 text-red-600 font-bold';
+                        btn.classList.add('bg-red-200', 'border-red-500');
+                    }
+                };
+                optsEl.appendChild(btn);
+            });
+        }
+
+        // =========================================================
+        // ЛОГИКА ТЕСТА (Память)
+        // =========================================================
+        const memState = { active: false, idx: -1, list: [], correct: 0 };
+
+        window.startMemoryQuiz = () => {
+            // Тест только по ТЕКУЩЕМУ уроку
+            const lessonVocab = [...LESSONS_DATA[currentLessonIndex].vocab];
+            memState.list = lessonVocab.sort(() => Math.random() - 0.5).slice(0, 5); // 5 случайных из урока
+            memState.idx = -1;
+            memState.correct = 0;
+            memState.active = true;
+            document.getElementById('next-memory-btn').textContent = 'След.';
+            nextMemoryQuestion();
+        };
+
+        window.nextMemoryQuestion = () => {
+            if (!memState.active) { window.startMemoryQuiz(); return; }
+            memState.idx++;
+            if (memState.idx >= memState.list.length) {
+                document.getElementById('memory-prompt-pinyin').textContent = 'Готово!';
+                document.getElementById('memory-prompt-meaning').textContent = `${memState.correct}/${memState.list.length}`;
+                document.getElementById('memory-drawing-canvas').innerHTML = '';
+                document.getElementById('next-memory-btn').textContent = 'Заново';
+                memState.active = false;
+                return;
+            }
+
+            const item = memState.list[memState.idx];
+            document.getElementById('memory-prompt-pinyin').textContent = item.pinyin;
+            document.getElementById('memory-prompt-meaning').textContent = item.meaning;
+            document.getElementById('memory-test-feedback').textContent = '';
+            document.getElementById('memory-drawing-canvas').innerHTML = '';
+
+            drawingWriterMemory = HanziWriter.create('memory-drawing-canvas', item.char, {
+                width: 300, height: 300, padding: 5, showOutline: false, showCharacter: false,
+                drawingColor: '#9333ea', drawingWidth: 6, showGrid: true, renderer: 'svg'
+            });
+
+            drawingWriterMemory.quiz({
+                onCorrectStroke: () => {},
+                onMistake: () => document.getElementById('memory-test-feedback').textContent = 'Ошибка...',
+                onComplete: () => {
+                    memState.correct++;
+                    document.getElementById('memory-test-feedback').textContent = 'Верно!';
+                    document.getElementById('memory-test-feedback').className = 'text-green-600 font-bold';
+                    setTimeout(window.nextMemoryQuestion, 1000);
+                }
+            });
+        };
+
+        window.clearMemoryDrawing = () => {
+            if (drawingWriterMemory) {
+                drawingWriterMemory.quiz();
+                document.getElementById('memory-test-feedback').textContent = '';
+            }
+        };
+
+        function resetMemoryQuiz() {
+            memState.active = false;
+            document.getElementById('next-memory-btn').textContent = 'Начать';
+            document.getElementById('memory-prompt-pinyin').textContent = '-';
+            document.getElementById('memory-prompt-meaning').textContent = '-';
+            document.getElementById('memory-drawing-canvas').innerHTML = '';
+        }
+
+        initializeFirebase();
+
+    </script>
+</body>
+</html>
